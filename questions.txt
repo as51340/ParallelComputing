@@ -1,3 +1,0 @@
-1. Print first 2 chapters of book
-2. Ask him a question about blocking/nonblocking ...
-

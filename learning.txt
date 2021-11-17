@@ -1,0 +1,461 @@
+1. Print first 2 chapters of book
+2. Ask him a question about blocking/nonblocking ...
+3. Difference between allreduce and reduce-scatter operation. n/p vs n? More: float vs vector
+4. Allgather for 2D operations? 
+5. Is it a good idea to create thrads for all 3 loops?
+
+
+Strong scalability
+- parallel efficiency is independent of p
+
+Weak scalability
+- speed-up increases when the problem size increases
+- parallel efficiency is independent of the ratio n/p
+
+Interconnects
+- how are processors connected
+
+- aggregate bandwidth: total data rate if every processor is sending or total capacity of the wires
+- distributed memory: every processor has its own address space
+
+Shared memory system
+- easy to program but hard to build
+- bus-based systems can become saturated
+- large, fast crossbars are expensive
+- cache-coherency is hard to maintain at scale
+
+Distributed memory
+- easy to build but hard to program(MPI)
+- interconnects have higher latency, data not immediately there
+
+Multithreading
+- context-switching is expensive
+- GPU handles many threads with ease - very SIMD oriented
+
+y_i = y_i + x_(i-1): if my number odd: receive then send
+if number is even: send then receive
+
+Blocking operations
+- send doesn't finish until the message is actually received
+
+Non-blocking operations
+- you have a buffer to send and to read from - check for completion later
+
+Latency - time to peform data movement
+
+T(n) = alpha + B*n 
+B = 1/bandwith
+bandiwdth = maximal amount of data that can be transferred per time unit
+
+Cache coherence - all cached data must be exact copy of the same values
+invalidation miss - item in cache is invalid because other core changed the value of the corresponding
+address
+
+False sharing
+- cache lines are copied between cores but because of invalidation miss on one core that core cannot use
+data - other core changed same value that both cores have it saved
+
+Temporal locality
+- reference same item as many items as you need don't always throw item out of cache
+
+Spatial locality
+- usage of stride:
+
+Cache oblivious algorithms
+- algorithms that are designed to work optimally with all cache levels, regarless of their size
+- can be unoptimal for a particular hardware
+
+Distributed memory
+- each processor has its own memory space
+- we need to communicate with other processors and for that we use: point to point commands, collective operations
+- processor can send only one message at a time - receive is not counted
+
+A = communication start up time
+B = inverse of the bandwidth
+y = number of CPU operations
+
+Broadcast
+- 0(n) = (p-1)*A + (p-1)*B
+- O(log(n)) = number of sends doubles in every step
+- lower bound: algorithms never achievest it
+
+Reduction
+- same but you need to include computational cost which can theoretically be parallelized
+- because you combine all items in the end
+- we can run broadcast in backwards and add computational cost
+
+Gather
+- you don't combine
+- lower bound same as for broadcast because again each processor will send at least once
+- same as broadcast, no need for combining the result
+
+Allgather
+- leave the result on all processors
+- each processor receives n/p elements from p-1 processors
+
+Allreduce
+- reduction + broadcast
+- lower bound almost the same as for simple reduction: because we assume that not all processors
+are active at the same time so we assume that the extra work can be spread out perfectly
+
+Reduce-scatter
+- each processor has n elements an we want to n-way reduction on them
+- allgather run in reverse with arithmetic added
+
+
+Parallel dense matrix-vector product
+By rows:
+- each processor could have all x values and then product can be trivially executed - wasteful,
+data integrity
+- naive approach could be: calculate what you have and for the others - they will transfer to me
+and then I will calculate
+- transferring one x at the time is very wasteful - for shared memory not so much but for distributed
+memory is very wasteful - we will take buffering approach - we have local buffer B_pq where we collect
+the elements from q that are needed to perform the product on p - 
+- we don't want to fetch elements more than once - combine more smaller messages into one large
+- local storage is not in this way function of the number of processors but of local data
+- algorithm is almost weakly scalable, 2n because of multiplication and addition
+- weakly scalable solution - we increase the number of processors with the amound of data
+- amount of memory that is available scale linearly with
+
+Parallel algorithm is cost-optimal if the overhead is at most of the order of the running time of
+the sequential algorithm
+
+- we can include communication overhead into Amdahl's law - always in parallel computing - communication
+is always much more expensive then computation
+
+Assumption in Amhdahl's law - fixed computation which gets executed on more and more processors
+- more realistic assumption is to say that there is a sequential fraction independent of the problem size
+
+strong scalability - execution time goes down linearly with the number of processors
+- efficiency constant but speedup linearly grows
+
+weak scalability - efficiency is constant on term n/p
+- iso-efficiency curve is a curve which plots different n/p points
+
+Realistic view is weak scalability n->inf, p->inf
+strong p->inf
+
+Matrix-vector by rows
+- almost weakly scalable but because of n factor in second term is not completely
+
+
+Matrix-vector product partitioning by columns
+- partial results and after we need to perform reduce scatter operation
+- see bok 268
+
+Matrix-vector two-dimensional partitioning
+- p_ij owns the matrix block A_ij and parts of x and y
+- x_j is distributed over the jth column which means that algorithms starts by collecting x_j on each
+processor p_ij by an allgather inside the processor columns
+- with that we can calcualate y_ij
+- and then we can gather together the pieces y_ij in each processor row to form y_i - this is then
+distributed over the processor row
+- r number of rows within part of 2D array, c number of columns
+- if number of processors if large term with square root will dominate so it is
+preferred
+
+Reduce-scatter
+- each processor has vector with n elements, consisting of p partitions of n/p elements
+- after performing algorithm - processor i received the reduction of the ith partition of all p 
+processors
+
+Sparse matrix or sparse array
+- most of the elements are zero
+
+n multiplication and n-1 additions
+- we assume equal partitions for x and y 
+
+Tridiagonal matrix
+- block row partitioning element
+- 3 multiplication + 2 additions - per row
+- 2 sends - 1 to left + 1 to right
+- nice example of weakly scalable algorithm
+- try column wise and 2D
+- careful about deadlock between send and receive operations
+
+
+Banded matrix
+- extension - try sequential cost
+- communication cost can be higher if b > n/p because in that case there are more
+than 2 processors included
+
+Sparse matrix
+- can be represente by a graph
+- coordinate format and compressed format
+- low arithmetic intensity
+- no spatial locality because of often jumps
+- connection with graphs - row and column index correspond to a vertex
+- number of nonzero elements for each processor in each partition is almost the same
+- interface nodes n: nodes in a graph that belong to other processors but whose values are needed to perform local computation
+- interface processors d: number of processors that hold interface nodes - we take maximum of b and d
+- scalable algorithm because for p/m constant efficiency is constant, assuming d and b doesn't change
+- weakly scalable definition may not be satisfied then
+- goals of partitioning:
+  - load balancing - all processors have same amount of work 
+  - minimize communication volume - number of interface nodes is reduces
+  - increase arithmetic intensity - we don't discuss that here
+  - we will use blue line - because we will have less interface nodes and hence less communication
+
+Grid oriented problems
+- dataset defined on a grid
+- local computations with small stencils - take valeus from neighbours
+- partition dataset in subdomains and send it to processors
+- important: we need to partition correctly domain and communicate that later
+- ghost cells - we use them as communication buffer . artificial cells
+
+1D partitioning
+- if startup time is dominated
+
+2D partitioning
+- speedup and efficiency can decrease while Fc increase when M is constant and
+p grows - communication time
+
+- load balance factor - between processors - always max time influences
+
+Thread basics
+- local and global memory - local is connected with function call
+
+OpenMP
+- static scheduling - at time of execution we know not in runtime
+- parallel for loops - some threads will be idle so they will be able to continue - in this way we can gain some time - no need for join operations
+- barrier - synchronize all threads
+- explicit threads - you have more control, you can be more efficient
+- OpenMP - sometimes can create overhead
+- parallel for - distribute loop iterations over processors
+
+dynamic scheduling - which thread is active that does job - first come, first do
+static or block scheduling
+guided - chunks are made progressively smaller until the minimum default number of threads is reached
+
+Assigning iteration to threads example
+1. only outer loop is parallelized - in the chunks of 32 iterations?
+2. blocks of 16 iterations
+3. mix of three loops - 32 in each direction, schedule over all threads
+
+Communication avoidance
+- always same amount of data is sent just in one step instead of s steps
+- computation instead of communication
+Communication hiding
+- do computations during communication steps
+Arnlodi algorithm - very important step
+- 3. step we can use comm avoidance
+- inner product is global reduction . allreduce
+- updates is local computation - no communication
+
+OpenMP scheduling strategies
+- overhead - more chunks vs better work sharing
+- static scheduling - when all iterations have the same computational cost
+- dynamic - each thread executes a chunk of iterations and when finished, requests another chunk
+  - appropriate when the iterations require different computational cost
+  - higher overhead because it dynamically distributed the iterations during the runtime
+- guided - quite similar to the dynamic - the size of a chunk is proportional to the number of 
+unassigned iterations divided by the number of the threads - chunk size decreases
+ - appropriatw when the iterations are poorly balanced between each other
+  - smaller chunks fills the schedule towards the end of the computation and improve load balancing
+  - especially appropriate when poor load balancing occurs toward the end of the computation
+
+If you have higher latency you want to reduce total communication. 1D communication should then be better.
+If you have lower bandwidth you want less amount of data transfer.
+
+For column-wise tridiagonal
+- same complexity as row - slightly higher computation cost but probably neglible
+
+
+Communication avoidance and communication hiding
+- reduce number of communication steps
+- communication volume doesn't reduce
+- more computational work
+
+s-step matrix vector product
+- you want to avoid second communication step by obtaining two extra elements in first step
+
+
+Communication hiding
+- enough computation to hide communication
+- partiton vectors - each processor has same number of elements
+- parition matrix - in such a way there of operations needed to perform matrix-vector product is same for each processor, minimize interface so there is minimum communicatio needed
+
+Vector update
+- it's just local operation on each processor because processors have all necesary elements already - no need for communication
+
+Inner product
+- n/p multiplications and n/p -1 additions
+- global reduction - all reduce log2p(alpha + beta  + gama) - lower bound - alpha is usually very slow
+
+modified Gram-Schmidt - j+1 global reductions
+Classical Gram-Schmidt - 2 global reductions
+
+We can do that in single reduction step
+
+Parallel bubble sort
+- comparison based - O(nlogn)
+- noncomparison based - very specific e.g integers
+- input and output lists are distributed
+- what if we have ring topology for processors order?
+- parallel compare exchnage operation
+- assumption that two partial lists were initially sorted
+- odd-even transposition - n-1 steps for n=even
+- parallel run time is O(n)
+- compare-split is just variant of compare-exchange
+- p steps (processors) and each does n/p comparison and we have to communicate n/p elements
+QQ: I think there is 2*n/p comparisons
+
+Quick sort
+Parallel quicksort algorithm1
+- performance depends on the quality of pivot - in the best case, the pivot divides the list of n elements into 2 sublists
+- we want evenly distributed list among the processes
+- choose randomly a pivot and then broadcast it to other processors - O(logp)
+- each processor does n/p comparisons and splits its list into two parts - smaller than pivot and larger than pivot
+- each process from the upper half sends its low list to a partner proces in the and receives high list in return
+- after that recursions continue - after logP recursions you have to sequentially sort local array
+- load balancing hard if you don't know real median
+- complexity: for single level of recursion O(n/p) + O(logp)
+Hyperquick sort
+- expected number of times a value is passes from one process to another is logP / 2
+- quite a lot of communicatio steps
+- sort before for better choosing median value
+- broadcast complexity is lower in each subsequent iteration because you need to broadcast between smaller number of processors
+
+MapReduce
+- implementation for a cluster
+- user launches master program which will steer other workers
+- input files are splitted into splits automatically -16-64 MB
+- workers store results on a local file system - typically local node computer
+- master decides what should be done . assigning worker to splits
+- reduce phase also organized by master - which worker will handle what part
+- number of workers typically much less than splits - to ensure continuos work - same for reduce phase 
+- file on disk local on processor, not external - for reducing communication overhead
+- reduce phase: intermediate key space is split into R pieces
+- master on the end wakes up user program
+- master handles worker failures - if a worker drops out - assigning jobs to other workers
+- master failure 
+- when a task is finished on worker - new task is assigned
+- automatic load balancing! and handling failures!
+- Spark, Hadoop implementations
+
+
+MPI for Data
+- MPI not designed to work on lot of data and files
+- vertex-centric model used by graph-based distributed processing
+- in contrast to classical MPI we now have more than one process on each processor - in general you don't have more number of processors than it is number of threads on node
+- nnodes * nslaves - multi-tasking 
+- memory model - many of the slave processes will be sleeping - because there is not enough RAM memory for everyone
+- we need to organize application in such a manner to prevent memory thrashing - repeated and frequent page faults
+- application is memory bound not computationally bound - we need enough tasks to keep CPU busy - we need more processors than processors in your code
+- MPI provides different types of commands - point to point communication is possible, buffered via RAM or disk
+- collective operations possible
+- critical sections 
+- PageRank algorithm - sparse matrix in compress format row wise - each process consecutive set of rows - block-row partitioning
+
+Grid oriented problems
+- mapping, partitioning and communication steps
+- same data dependency pattern
+- overlap region
+- boundary cells - data that needs to be communicated - used by neighbouring processes
+- ghost cells - you need to do update on - from other processes
+- For communication with neighbouring subdomains - get and send data of boundary cells and ghost cells, perform update and check for global convergence
+- ghost cells are used as buffer to get data from neighbouring domain
+- size of subdomains - we want squares because they have small perimeter and large surface
+- communication volume is proportional to perimeter of subdomain
+- 1D stripwise partitioning - higher communication volume, fewer neighbours, communication in only one direction
+- synchronization by the communication at the end of each iterations
+- if work load imbalance is due to the boundary conditions - blockwise partitioning makes sense
+
+Game of life
+- rules are applied in parallel
+
+QA for next exercise session
+- why is 2p-3 factor for complexity
+- why broadcast of pivot value doesn't decrease in worst-case scenario for quicksort?
+- about image partitioning last task?
+- what is non-blocking non-buffered send primitive?
+
+Blocking, non-blocking, buffered, non-buffered
+- with blocking you have to pay a price for idling of processors or for buffering
+
+High performance computing
+- Tier2 - students and researchers first step
+- Tier1 - BrENIAC - project proposal
+- Tier0 - biggest machines in Europoe
+
+Tier2 overview
+- jobs cannot run longer than 7 days
+
+Genius cluster
+- new one
+- IB-EDR - state of the art for interconnections nodes
+- SkyLake GPU - NViLink
+- Superdome - amount of memory 6TB ansd 6TB local discs space
+
+Storage
+- key ingredient
+- your files are owned only by you - POSIX permission - you can create a group and then share
+but otherwise not possible
+- 3 default storage: VSC_HOME, VSC_DATA, VSC_SCRATCH
+- staging and archive storages
+
+$VSC_HOME
+- NFS
+- backup
+- access is global
+- 3GB
+- not extended
+- for purpose of administration not for computation, config files
+- jobs can crash, login issues
+
+$VSC_DATA
+- NFS slow, global access, backup
+- default quota 75GB
+- extension on purchase of quota
+- data, code, software, results
+- not optimal for intensive or parallel I/O
+
+$VSC_SCRATCH
+- GFPS, global access, delete after 28 days from last access
+- default quota 100GB
+- extension free
+- intensive, parallel I/O, temporary files, recommended storage for all jobs
+- copy scratch files for VSC_DATA or local storage after jobs are done
+- no backup
+
+$VSC_SCRATCH_NODE
+- GFPS - parallel IO 
+- on compute node, only at runtime
+- no backup
+- default quota 200GB
+- you don't go through network, very fast
+- fastest I/O, attached to the node, cleaned after job terminates, copy the data to your jome, scratch
+or staging before job ends
+
+STAGING
+- created on demand - Tier-2@KUL
+- GFPS
+- none backup
+- no default quota
+- permanent: share with a group
+- accessible from login/compute nodes
+
+ARCHIVE
+- NFS - slow, optimized for durability not for computation, Tier-2@KUL
+- backups: snapshots
+- default quota None
+- share data with a group 
+
+do not use /tmp - reserved for OS and root processes
+
+Login nodes
+- you also have storage nodes, service nodes - you don't directly use them
+- compute nodes - infiniband interconnect
+- everything is behind firewall
+- use SSH authentication to access whole system
+- login nodes: to develop and/or compile code and/or software, for managing jobs, check storage,
+credit balance, moving data
+- visualize your data, share files/folder
+- login nodes are shared resources, not for heavy-lifting tasks
+
+File transfer with FileZilla
+
+
+
+
