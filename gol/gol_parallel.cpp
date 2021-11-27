@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Local matrix, proc: " << rank << std::endl;
     print_board(&locBoard[0][0], BLOCKROWS, BLOCKCOLS);
     std::cout << std::endl;
-    std::cout << "Writin to file before starting iterations..." << std::endl;
+    std::cout << "Writing to file before starting iterations..." << std::endl;
     writeBoardToFile(&locBoard[0][0], firstRow, lastRow, firstCol, lastCol, programName, 0, rank, BLOCKROWS, BLOCKCOLS);
 
 
