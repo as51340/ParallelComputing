@@ -1,0 +1,8 @@
+#!/bin/bash -l
+#PBS -W x=FLAGS:ADVRES:Parallel_Computing_1911.16141
+#PBS -l nodes=1:ppn=20
+#PBS -l walltime=00:01:00
+
+module load intel
+cd $PBS_O_WORKDIR
+mpirun -np 8 ./hello

@@ -1,0 +1,16 @@
+
+# Compile c code
+gcc -o hello omp hello.c -fopenmp
+# Compile MPI code
+mpicc -o hello mpi hello.c
+# Run mpi code
+mpirun -n 4 hello
+
+# Copy folder to genk server
+scp -r -o 'ProxyJump r0876363@st.cs.kuleuven.be' ../exercise3/ r0876363@genk.cs.kotnet.kuleuven.be:/home/r0876363/
+
+# Copy whole folder to vsc
+cp -r ../exercise3/ vsc34590@login.hpc.kuleuven.be:~
+
+# ID of open mp file
+50932941.tier2-p-moab-2.tier2.hpc.kuleuven.be

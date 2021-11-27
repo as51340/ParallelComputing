@@ -37,9 +37,18 @@ if number is even: send then receive
 
 Blocking operations
 - send doesn't finish until the message is actually received
+- For MPI_Recv, blocking means that receive returns only after it contains the data in its buffer.
+- for MPI_Send it is up to standard library to decide if it will be saved into the buffer or not - if it is saved into the buffer then send can be completed even before reaching corresponding receive
+- receive and send wait until data was copied into buffer or corresponding receive was matched
+
 
 Non-blocking operations
 - you have a buffer to send and to read from - check for completion later
+- MPI_Wait - then program has to be synchronous - non blocking send just prepares request and then wait synchronizes program
+Waiting forces the process to go in "blocking mode". 
+- if it is written in two consecutive lines then it is same as blocking operation
+- MPI_Test esting checks if the request can be completed. If it can, the request is automatically completed and the data transferred.
+- t is possible to match non-blocking and blocking communications. For instance, you can have a MPI_Isend on one process being retrieved by a MPI_Recv on another process
 
 Latency - time to peform data movement
 
@@ -368,7 +377,6 @@ Game of life
 QA for next exercise session
 - why is 2p-3 factor for complexity
 - why broadcast of pivot value doesn't decrease in worst-case scenario for quicksort?
-- about image partitioning last task?
 - what is non-blocking non-buffered send primitive?
 
 Blocking, non-blocking, buffered, non-buffered
@@ -455,6 +463,51 @@ credit balance, moving data
 - login nodes are shared resources, not for heavy-lifting tasks
 
 File transfer with FileZilla
+
+Software: available moodules
+- Intel and Foss compilers - foss is freely open source
+- every software is installed as module
+- load a specific module
+- install miniconda - then you can add any combination of packages you want
+
+Starting computation
+- how many compute servers(nodes) to request and how many cores(ppn) per node, how much memory per
+core or per process we need, which partition to use: GPU, walltime - how long to use resources?
+- is it okay to exaggerate little bit on walltime - otherwise job can wait for a long time
+- scheduler makes most optimal use of hardware
+
+How to use the cluster?
+- interactive GUI using NX
+- batch workload - submit file to the scheduler and you don't need to be behind computer
+- interactive workload 
+- X-forwarding: for forwarding visualization to local laptop, you need to login with -X: on login node
+- on Linux file extensions are meaningless
+- receive a unique JobID
+
+Standard error file are always created for each simulation
+
+GPU partition
+- NVLink is interconnection between GPUs
+- PCI Exp is slow - about 10GB/s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

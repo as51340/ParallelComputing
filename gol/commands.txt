@@ -1,0 +1,6 @@
+conda create --name goal_venv numpy
+conda activate goal_venv
+
+
+Blockwise partitioning - less amount of data communicated and less costly startup time.
+Rowwise - less total communication but more data communicated.
