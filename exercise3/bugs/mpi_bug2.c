@@ -127,13 +127,42 @@ char** do_communication(char *board, int firstRow, int lastRow, int firstCol, in
     
     char **comm = new char*[4];
     for(int i = 0; i < 4; i++) comm[i] = nullptr;
+    
+    MPI_Datatype col_type_1, col_type;
+    // number of elements, blocklen, stride
 
-    //UP DOWN COMMUNICATION
+    MPI_Type_vector(BLOCKROWS, 1, BLOCKCOLS, MPI_CHAR, &col_type);
+    MPI_Type_commit(&col_type);
+
+
+    // FIRST SEND EVERYTHING
 
     if(firstRow > 0) { // then I can send up - this means it is not in first row
         comm[upTag] = new char[BLOCKCOLS];
         std::cout << "Proc: " << rank << " is trying to send up" << std::endl;
         MPI_Isend(&board[0], BLOCKCOLS, MPI_CHAR, rank-NPCOLS, upTag, MPI_COMM_WORLD, &reqs[upTag]); // send up
+    }
+    if(lastRow < ROWS - 1) { // If am not at the bottom then I can send down but also receive from down
+        comm[downTag] = new char[BLOCKCOLS];
+        std::cout << "Proc: " << rank << " is trying to send down" << std::endl;
+        MPI_Isend(&board[BLOCKCOLS*(BLOCKROWS-1)], BLOCKCOLS, MPI_CHAR, rank+NPCOLS, downTag, MPI_COMM_WORLD, &reqs[downTag]);  // send down
+    }
+
+    if(firstCol > 0) {
+        comm[leftTag] = new char[BLOCKROWS];
+        std::cout << "Proc: " << rank << " is trying to send left" << std::endl;
+        MPI_Isend(&(board[0]), 1, col_type, rank-1, leftTag, MPI_COMM_WORLD, &reqs[leftTag]); // send left
+    }
+
+    if(lastCol < COLS -1) {
+        comm[rightTag] = new char[BLOCKROWS];
+        std::cout << "Proc: " << rank << " is trying to send right" << std::endl;
+        MPI_Isend(&(board[BLOCKCOLS-1]), 1, col_type, rank+1, rightTag, MPI_COMM_WORLD, &reqs[rightTag]); // send right
+    }
+    
+    // Now try to receive
+
+    if(firstRow > 0) {
         std::cout << "Proc: " << rank << " is trying to receive from up" << std::endl;
         MPI_Recv(&comm[upTag][0], BLOCKCOLS, MPI_CHAR, rank-NPCOLS, downTag, MPI_COMM_WORLD, &stats[downTag]); // receive from up
         std::cout << "Proc: " << rank << " received from up processor following elements" << std::endl;
@@ -144,10 +173,8 @@ char** do_communication(char *board, int firstRow, int lastRow, int firstCol, in
         std::cout << std::endl;
         std::cout << "----------" << std::endl;
     }
-    if(lastRow < ROWS - 1) { // If am not at the bottom then I can send down but also receive from down
-        comm[downTag] = new char[BLOCKCOLS];
-        std::cout << "Proc: " << rank << " is trying to send down" << std::endl;
-        MPI_Isend(&board[BLOCKCOLS*(BLOCKROWS-1)], BLOCKCOLS, MPI_CHAR, rank+NPCOLS, downTag, MPI_COMM_WORLD, &reqs[downTag]);  // send down
+
+    if(lastRow < ROWS - 1) {
         std::cout << "Proc: " << rank << " is trying to receive from down" << std::endl;
         MPI_Recv(&comm[downTag][0], BLOCKCOLS, MPI_CHAR, rank+NPCOLS, upTag, MPI_COMM_WORLD, &stats[upTag]); // receive from down
         std::cout << "Proc: " << rank << " received from down processor following elements" << std::endl;
@@ -159,22 +186,10 @@ char** do_communication(char *board, int firstRow, int lastRow, int firstCol, in
         std::cout << "----------" << std::endl;
     }
 
-    // LEFT RIGHT COMMUNICATION
-
-
-    MPI_Datatype col_type_1, col_type;
-    // number of elements, blocklen, stride
-
-    MPI_Type_vector(BLOCKROWS, 1, BLOCKCOLS, MPI_CHAR, &col_type);
-    MPI_Type_commit(&col_type);
-
     if(firstCol > 0 ) { // then you can send to left
-        comm[leftTag] = new char[BLOCKROWS];
-
-        std::cout << "Proc: " << rank << " is trying to send left" << std::endl;
-        MPI_Isend(&(board[0]), 1, col_type, rank-1, leftTag, MPI_COMM_WORLD, &reqs[leftTag]); // send left
+        
         std::cout << "Proc: " << rank << " is trying to receive from left" << std::endl;
-        MPI_Recv(&(comm[leftTag][0]), BLOCKROWS, MPI_INT, rank-1, rightTag, MPI_COMM_WORLD, &stats[rightTag]);
+        MPI_Recv(&(comm[leftTag][0]), BLOCKROWS, MPI_CHAR, rank-1, rightTag, MPI_COMM_WORLD, &stats[rightTag]);
         std::cout << "Proc: " << rank << " received from left processor following elements" << std::endl;
         std::cout << "----------" << std::endl;
         for(int i = 0; i < BLOCKROWS; i++) {
@@ -185,12 +200,8 @@ char** do_communication(char *board, int firstRow, int lastRow, int firstCol, in
     }
 
     if(lastCol < COLS - 1) { // then you can send to right processor
-        comm[rightTag] = new char[BLOCKROWS];
-
-        std::cout << "Proc: " << rank << " is trying to send right" << std::endl;
-        MPI_Isend(&(board[BLOCKCOLS-1]), 1, col_type, rank+1, rightTag, MPI_COMM_WORLD, &reqs[rightTag]); // send right
         std::cout << "Proc: " << rank << " is trying to receive from right" << std::endl;
-        MPI_Recv(&(comm[rightTag][0]), BLOCKROWS, MPI_INT, rank+1, leftTag, MPI_COMM_WORLD, &stats[leftTag]);
+        MPI_Recv(&(comm[rightTag][0]), BLOCKROWS, MPI_CHAR, rank+1, leftTag, MPI_COMM_WORLD, &stats[leftTag]);
         std::cout << "Proc: " << rank << " received from right processor following elements" << std::endl;
         std::cout << "----------" << std::endl;
         for(int i = 0; i < BLOCKROWS; i++) {
