@@ -1,0 +1,16 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=36
+#PBS -l walltime=00:01:00
+#PBS -l pmem=5gb
+#PBS -N gol_serial1
+
+# Load intel module
+module load intel
+echo $PWD
+# Compile parallel program
+g++ -o ./gol/gol_serial -O3 -std=c++1z ./gol/gol_serial.cpp
+
+echo "START" >> ./gol/serial_times.txt
+echo "$1*$2" >> ./gol/serial_times.txt
+
+./gol/./gol_serial $1 $2 100 1000

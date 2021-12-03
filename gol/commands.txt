@@ -4,3 +4,5 @@ conda activate goal_venv
 
 Blockwise partitioning - less amount of data communicated and less costly startup time.
 Rowwise - less total communication but more data communicated.
+
+mpic++ -o test test.cpp -lm  # lm is for including some mathematical function

@@ -1,58 +1,70 @@
+/**
+ * Serial implementation of the game of life for the course Parallel Computing.
+ * Emil Loevbak (emil.loevbak@cs.kuleuven.be)
+ * First implementation: November 2019
+ */
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <math.h>
-#include <mpi.h>
-#include <ctime>
+#include <iterator>
 #include <vector>
+#include <ctime>
 #include "test.h"
-
-
-int ROWS, COLS;
-int BLOCKROWS, BLOCKCOLS;
-int NPROWS, NPCOLS;
-int NUMTASKS;
-
-
-// Name of the program - all threads will use same program
-std::string programName;
-    
-
-int upTag = 0, rightTag = 1, downTag = 2, leftTag = 3; // from sending perspective
+#include <chrono>
 
 int const globalBufferLength = 50;
 
-void init_board(char *board, int rows, int cols) {
-    uint16_t siz = sizeof(board);
-    std::cout << "Array size: " << siz << std::endl;
-    for(int i = 0; i < rows; i++) {
-        for(int j = 0; j < cols; j++) {
-            board[i*cols + j] = (char)i*cols + j;
-        }
-    }
-}
-
-void initializeBoard(char* board, int rows, int cols)
+void initializeBoard(std::vector<std::vector<bool>> &board)
 {
     int deadCellMultiplyer = 2;
     srand(time(0));
-    for (int i = 0; i < rows; i++) {
-        for(int j = 0; j < cols; j++) {
-            board[i*cols+j] = (rand() % (deadCellMultiplyer + 1) == 0);
+    for (auto &col : board)
+    {
+        for (auto element : col)
+        {
+            element = (rand() % (deadCellMultiplyer + 1) == 0);
         }
     }
 }
 
-void print_board(char *board, int rows, int cols) {
-    for(int i = 0; i < rows; i++) {
-        for(int j = 0; j < cols; j++) {
-            printf("%3d ", (char)board[i*cols + j]);
+void updateBoard(std::vector<std::vector<bool>> &board)
+{
+    const size_t rows = board.size();
+    const size_t cols = board[0].size();
+    std::vector<std::vector<int>> liveNeighbors(rows, std::vector<int>(cols, 0));
+
+    //Count live neighbors
+    for (size_t i = 0; i < rows; ++i)
+    {
+        for (size_t j = 0; j < cols; ++j)
+        {
+            if (board[i][j])
+            {
+                for (int di = -1; di <= 1; ++di)
+                {
+                    for (int dj = -1; dj <= 1; ++dj)
+                    {
+                        //Periodic boundary conditions
+                        liveNeighbors[(i + di + rows) % rows][(j + dj + cols) % cols]++;
+                    }
+                }
+                liveNeighbors[i][j]--; //Correction so that a cell does not concider itself as a live neighbor
+            }
         }
-        std::cout << std::endl;
+    }
+
+    //Update board
+    for (size_t i = 0; i < rows; ++i)
+    {
+        for (size_t j = 0; j < cols; ++j)
+        {
+            board[i][j] = ((liveNeighbors[i][j] == 3) || (board[i][j] && liveNeighbors[i][j] == 2));
+        }
     }
 }
 
-void writeBoardToFile(char *board, size_t firstRow, size_t lastRow, size_t firstCol, size_t lastCol, std::string fileName, int iteration, uint processID, int rows, int cols)
+void writeBoardToFile(std::vector<std::vector<bool>> &board, size_t firstRow, size_t lastRow, size_t firstCol, size_t lastCol, std::string fileName, int iteration, uint processID)
 {
     //Open file
     std::ofstream outputFile(fileName + "_" + std::to_string(iteration) + "_" + std::to_string(processID) + ".gol");
@@ -60,10 +72,10 @@ void writeBoardToFile(char *board, size_t firstRow, size_t lastRow, size_t first
     outputFile << std::to_string(firstRow) << " " << std::to_string(lastRow) << std::endl;
     outputFile << std::to_string(firstCol) << " " << std::to_string(lastCol) << std::endl;
     //Write data
-    for(size_t i = 0; i < rows; i++) {
-        for(size_t j = 0; j < cols; j++) {
-            outputFile << ((int)board[i*cols + j]) << "\t";
-        }
+    std::ostream_iterator<bool> outputIterator(outputFile, "\t");
+    for (size_t i = 0; i < board.size(); ++i)
+    {
+        copy(board[i].begin(), board[i].end(), outputIterator);
         outputFile << std::endl;
     }
     //Close file
@@ -89,211 +101,21 @@ std::string setUpProgram(size_t rows, size_t cols, int iteration_gap, int iterat
     return programName;
 }
 
-void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol, int lastCol, int iteration, MPI_Datatype col_type)
-{
-    // Number of rows in this board
-    // Number of cols in this board
-    // Current rank of processor
-    // Datatype for calculating column vector
-    // Pointer to the beginning of the board
-
-    // Do asynchronus communication
-    MPI_Request reqs[4];  // from the sending perspective
-    MPI_Status stats[4]; // from the sending perspective
-
-    MPI_Request recvReqs[4];
-    MPI_Status recvStats[4];
-    
-    char **comm = new char*[4];
-
-    // FIRST SEND EVERYTHING
-    // SEND UP
-    size_t dest = 0;
-    if(firstRow > 0) {
-        dest = rank - NPCOLS;
-    } else {
-        dest = NPCOLS * (NPROWS - 1) + rank % NPCOLS;
-    }
-    MPI_Isend(&board[0], BLOCKCOLS, MPI_CHAR, dest, upTag, MPI_COMM_WORLD, &reqs[upTag]); // send up
-
-    // SEND DOWN
-    if(lastRow < ROWS - 1) {
-        dest = rank + NPCOLS;
-    } else {
-        dest = rank % NPCOLS;
-    }
-    MPI_Isend(&board[BLOCKCOLS*(BLOCKROWS-1)], BLOCKCOLS, MPI_CHAR, dest, downTag, MPI_COMM_WORLD, &reqs[downTag]);  // send down
-
-    // SEND LEFT
-    if(firstCol > 0) {
-        dest = rank - 1;
-    } else {
-        dest = rank + NPCOLS - 1;
-    }
-    MPI_Isend(&(board[0]), 1, col_type, dest, leftTag, MPI_COMM_WORLD, &reqs[leftTag]); // send left
-
-    // SEND RIGHT
-    if(lastCol < COLS -1) {
-        dest = rank + 1;
-    } else {
-        dest = rank - NPCOLS + 1;
-    }
-    MPI_Isend(&(board[BLOCKCOLS-1]), 1, col_type, dest, rightTag, MPI_COMM_WORLD, &reqs[rightTag]); // send right
-     
-    // AFTER THAT SEND REQUESTS FOR RECEIVING
-    // SEND RECEIVE FROM UP
-    size_t src = 0;
-    if(firstRow > 0) {
-        src = rank - NPCOLS;
-    } else {
-        src = NPCOLS * (NPROWS - 1) + rank % NPCOLS;
-    }
-    comm[upTag] = new char[BLOCKCOLS];
-    MPI_Irecv(&comm[upTag][0], BLOCKCOLS, MPI_CHAR, src, downTag, MPI_COMM_WORLD, &recvReqs[upTag]); // receive from up
-
-    // SEND RECEIVE FROM DOWN
-    if(lastRow < ROWS - 1) {
-        src = rank + NPCOLS;
-    } else {
-        src = rank % NPCOLS;
-    }
-    comm[downTag] = new char[BLOCKCOLS];
-    MPI_Irecv(&comm[downTag][0], BLOCKCOLS, MPI_CHAR, src, upTag, MPI_COMM_WORLD, &recvReqs[downTag]); // receive from down
-
-    // SEND RECEIVE FROM LEFT
-    if(firstCol > 0) {
-        src = rank - 1;
-    } else {
-        src = rank + NPCOLS - 1;
-    }
-    comm[leftTag] = new char[BLOCKROWS];
-    MPI_Irecv(&(comm[leftTag][0]), BLOCKROWS, MPI_CHAR, src, rightTag, MPI_COMM_WORLD, &recvReqs[leftTag]);
-
-
-    // SEND RECEIVE FROM RIGHT
-    if(lastCol < COLS -1) {
-        src = rank + 1;
-    } else {
-        src = rank - NPCOLS + 1;
-    }
-    comm[rightTag] = new char[BLOCKROWS]; 
-    MPI_Irecv(&(comm[rightTag][0]), BLOCKROWS, MPI_CHAR, src, leftTag, MPI_COMM_WORLD, &recvReqs[rightTag]);
-
-
-    // NOW PERFORM LIVE NEIGHBOURS UPDATE FROM VALUES YOU KNOW
-    std::vector<std::vector<int>> liveNeighbors(BLOCKROWS, std::vector<int>(BLOCKCOLS, 0));
-    //Count live neighbors
-    for (size_t i = 0; i < BLOCKROWS; ++i)
-    {
-        for (size_t j = 0; j < BLOCKCOLS; ++j)
-        {
-            if (((char)board[i*BLOCKCOLS +j]) == 1)
-            {
-                if(i > 0) {
-                    liveNeighbors[i-1][j]++; // update up neighbours
-                }
-                if(i < BLOCKROWS - 1) {
-                    liveNeighbors[i+1][j]++;
-                }
-                if(j > 0) {
-                    liveNeighbors[i][j-1]++;
-                }
-                if(j < BLOCKCOLS - 1) {
-                    liveNeighbors[i][j+1]++;
-                }
-            }
-        }
-    }
-
-    // NOW PERFORM UPDATE OF THE PART OF THE BOARD YOU KNOW HOW TO SOLVE
-    //Update board
-    for (size_t i = 1; i < BLOCKROWS-1; ++i) {
-        for (size_t j = 1; j < BLOCKCOLS-1; ++j) {
-            board[i*BLOCKCOLS + j] = (char)((liveNeighbors[i][j] == 3) || ((char)board[i*BLOCKCOLS +j]) == 1 && liveNeighbors[i][j] == 2);
-        }
-    }
-
-    // NOW WAIT FOR NEIGHBOURS VECTOR SO YOU CAN PERFORM FINAL UPDATE
-    // WAIT FOR VERTICAL COMMUNICATION
-    MPI_Wait(&recvReqs[upTag], &recvStats[upTag]);
-    MPI_Wait(&recvReqs[downTag], &recvStats[downTag]);
-
-    // PRINT WHAT I RECEIVED FROM UP PROCESSOR
-    std::cout << "Proc: " << rank << " received from up processor, iteration " << iteration << std::endl;
-    std::cout << "----------" << std::endl;
-    for(int i = 0; i < BLOCKCOLS; i++) {
-        printf("%3d ", (char)comm[upTag][i]);
-    }
-    std::cout << std::endl << "----------" << std::endl;
-
-    std::cout << "Proc: " << rank << " received from down processor, iteration " << iteration << std::endl;
-    std::cout << "----------" << std::endl;
-    for(int i = 0; i < BLOCKCOLS; i++) {
-        printf("%3d ", (char)comm[downTag][i]);
-    }
-    std::cout << std::endl << "----------" << std::endl;
-
-
-    for(int j = 0; j < BLOCKCOLS; j++) {
-        // UPDATE FIRST ROW
-        board[j] = (char)((liveNeighbors[0][j] + (int)comm[upTag][j] == 3) || ((char)board[j]) == 1 && (liveNeighbors[0][j] + (int)comm[upTag][j]) == 2);
-        // UPDATE LAST ROW
-        size_t lastRow = BLOCKROWS - 1;
-        board[lastRow*BLOCKCOLS + j] = (char)((liveNeighbors[lastRow][j] + (int)comm[downTag][j] == 3) || ((char)board[lastRow*BLOCKCOLS + j]) == 1 && (liveNeighbors[lastRow][j] + (int)comm[downTag][j]) == 2);
-    }
-
-    // WAIT FOR HORIZONTAL COMMUNICATION
-    MPI_Wait(&recvReqs[rightTag], &recvStats[rightTag]);
-    MPI_Wait(&recvReqs[leftTag], &recvStats[leftTag]);
-
-    std::cout << "Proc: " << rank << " received from left processor, iteration " << iteration << std::endl;
-    std::cout << "----------" << std::endl;
-    for(int i = 0; i < BLOCKCOLS; i++) {
-        printf("%3d ", (char)comm[leftTag][i]);
-    }
-    std::cout << std::endl << "----------" << std::endl;
-
-    
-    std::cout << "Proc: " << rank << " received from right processor, iteration " << iteration << std::endl;
-    std::cout << "----------" << std::endl;
-    for(int i = 0; i < BLOCKCOLS; i++) {
-        printf("%3d ", (char)comm[rightTag][i]);
-    }
-    std::cout << std::endl << "----------" << std::endl;
-
-
-    for(int i = 0; i < BLOCKROWS; i++) {
-        // UPDATE LEFT PART OF AN ARRAY
-        board[i*BLOCKCOLS] = (char)((liveNeighbors[i][0] + (int)comm[leftTag][i] == 3) || ((char)board[i*BLOCKCOLS]) == 1 && (liveNeighbors[i][0] + (int)comm[leftTag][i]) == 2);
-        // UPADATE RIGHT PART OF AN ARRAY
-        board[BLOCKCOLS*(i+1) - 1] = (char)((liveNeighbors[i][BLOCKCOLS-1] + (int)comm[rightTag][i] == 3) || ((char)board[BLOCKCOLS*(i+1)-1]) == 1 && (liveNeighbors[i][BLOCKCOLS-1] + (int)comm[rightTag][i]) == 2);
-    }
-
-
-    // Wait for all send request to finish and free memory in which data was received
-    for(int i = 0; i < 4; i++) {
-        MPI_Wait(&reqs[i], &stats[i]);
-        delete comm[i];
-    }
-    
-    // final clear
-    delete comm;
-}
-
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{   
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
     if (argc != 5)
     {
         std::cout << "This program should be called with four arguments! \nThese should be, the total number of rows; the total number of columns; the gap between saved iterations and the total number of iterations, in that order." << std::endl;
         return 1;
     }
-
+    size_t rows, cols;
     int iteration_gap, iterations;
-
     try
     {
-        ROWS = atoi(argv[1]);
-        COLS = atoi(argv[2]);
+        rows = atoi(argv[1]);
+        cols = atoi(argv[2]);
         iteration_gap = atoi(argv[3]);
         iterations = atoi(argv[4]);
     }
@@ -302,129 +124,31 @@ int main(int argc, char *argv[]) {
         std::cout << "One or more program arguments are invalid!" << std::endl;
         return 1;
     }
-    
-    // INIT MPI
-    int rank;
-    MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &NUMTASKS);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    // get partition values
-    
+    int processes = 1, processID = 0;
+    size_t firstRow = 0, lastRow = rows - 1, firstCol = 0, lastCol = cols - 1;
+    std::string programName = setUpProgram(rows, cols, iteration_gap, iterations, processes);
 
-    NPROWS = sqrt(NUMTASKS);  // number of processors is squared number
-    NPCOLS = sqrt(NUMTASKS);
-    BLOCKROWS = ROWS / NPROWS;  // 
-    BLOCKCOLS = COLS / NPCOLS;
+    //Build board
+    std::vector<std::vector<bool>> board((lastRow - firstRow + 1), std::vector<bool>(lastCol - firstCol + 1));
+    initializeBoard(board);
+    // test5_serial_init_board(board);
 
-
-    // Board and local board
-    char board[ROWS][COLS];
-    char locBoard[BLOCKROWS][BLOCKCOLS];
-
-    MPI_Status Stat;
-    int firstRow, lastRow, firstCol, lastCol;
-
-    size_t rowTag = 0, colTag = 1;
-    int programNameTag = 2;
-
-    if(rank == 0) {
-        std::cout << "Number of processors: " << NUMTASKS << std::endl;
-        std::cout << "NPROWS: " << NPROWS << std::endl;
-        std::cout << "NPCOLS: " << NPCOLS << std::endl;
-        std::cout << "BlOCKROWS: " << BLOCKROWS << std::endl;
-        std::cout << "BLOCKCOLS: " << BLOCKCOLS << std::endl;
-
-        // init_board(&board[0][0], ROWS, COLS);
-        // initializeBoard(&board[0][0], ROWS, COLS);
-        test1_init_board(&board[0][0]);
-    
-        std::cout << "Global matrix" << std::endl;
-        print_board(&board[0][0], ROWS, COLS);
-        std::cout << std::endl;
-
-        // Only one program name
-        programName = setUpProgram(ROWS, COLS, iteration_gap, iterations, NUMTASKS);
-
-        // Send offsets from processor 0 to all other processors
-        for(size_t i = 0; i < NPROWS; i++) {
-            for(size_t j = 0; j < NPCOLS; j++) {
-                int locFirstRow = BLOCKROWS * i;
-                int locFirstCol = BLOCKCOLS * j;
-                int procNum = i*NPCOLS + j;
-                // SEND DATA ABOUT ROW AND COL
-                MPI_Send(&locFirstRow, 1, MPI_INT, procNum, rowTag, MPI_COMM_WORLD);
-                MPI_Send(&locFirstCol, 1, MPI_INT, procNum, colTag, MPI_COMM_WORLD);
-                // SEND PROGRAM NAME TO ALL OTHER PROCESSORS
-                MPI_Send(programName.c_str(), programName.size(), MPI_CHAR, procNum, programNameTag, MPI_COMM_WORLD);
-            }
-        }
-    }
-
-    // Receive first row variable and first col variable
-    MPI_Recv(&firstRow, 1, MPI_INT, 0, rowTag, MPI_COMM_WORLD, &Stat);
-    MPI_Recv(&firstCol, 1, MPI_INT, 0, colTag, MPI_COMM_WORLD, &Stat);
-    // RECEIVE PROGRAM NAME FROM ROOT PROCESSOR 
-    MPI_Status programNameStatus;
-    MPI_Probe(0, programNameTag, MPI_COMM_WORLD, &programNameStatus);
-    int programNameLen;
-    MPI_Get_count(&programNameStatus, MPI_CHAR, &programNameLen);
-
-    char programNameBuffer[programNameLen];
-    MPI_Recv(&programNameBuffer[0], programNameLen, MPI_CHAR, 0, programNameTag, MPI_COMM_WORLD, &Stat);
-
-    programName = std::string(programNameBuffer, programNameLen);
-
-    std::cout << "Rank: " << rank << " Program name: " << programName << std::endl;
-
-
-
-    lastRow = firstRow + BLOCKROWS - 1;
-    lastCol = firstCol + BLOCKCOLS - 1;
-
-    MPI_Datatype blocktype;
-    MPI_Datatype blocktype2;
-    MPI_Datatype col_type;
-
-    MPI_Type_vector(BLOCKROWS, BLOCKCOLS, COLS, MPI_CHAR, &blocktype2);
-    MPI_Type_create_resized(blocktype2, 0, sizeof(char), &blocktype);
-    MPI_Type_commit(&blocktype);
-     // number of elements, blocklen, stride
-    MPI_Type_vector(BLOCKROWS, 1, BLOCKCOLS, MPI_CHAR, &col_type);
-    MPI_Type_commit(&col_type);
-
-
-    int disps[NPROWS*NPCOLS];
-    int counts[NPROWS*NPCOLS];
-
-    for(int i = 0; i < NPROWS; i++) {
-        for(int j = 0; j < NPCOLS; j++) {
-            disps[i*NPCOLS+j] = i*COLS*BLOCKROWS + j*BLOCKCOLS;
-            counts[i*NPCOLS +j] = 1;
-        }
-    }
-
-    MPI_Scatterv(board, counts, disps, blocktype, locBoard, BLOCKROWS*BLOCKCOLS, MPI_CHAR, 0, MPI_COMM_WORLD);  
-
-    // SYNCHRONIZE ALL CORES IN THIS MOMENT
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    // //Do iteration
-    writeBoardToFile(&locBoard[0][0], firstRow, lastRow, firstCol, lastCol, programName, 0, rank, BLOCKROWS, BLOCKCOLS);
+    //Do iteration
+    writeBoardToFile(board, firstRow, lastRow, firstCol, lastCol, programName, 0, processID);
     for (int i = 1; i <= iterations; ++i)
     {
-        updateBoard(&locBoard[0][0], rank, firstRow, lastRow, firstCol, lastCol, i, col_type);
+        updateBoard(board);
         if (i % iteration_gap == 0)
         {
-            writeBoardToFile(&locBoard[0][0], firstRow, lastRow, firstCol, lastCol, programName, i, rank, BLOCKROWS, BLOCKCOLS);
+            writeBoardToFile(board, firstRow, lastRow, firstCol, lastCol, programName, i, processID);
         }
     }
+    
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now(); 
+    double time_elapsed = std::chrono::duration<double>(end - begin).count();
+    std::ofstream outfile;
+    outfile.open("./gol/serial_times.txt", std::ios_base::app); // append instead of overwrite
+        outfile << time_elapsed << std::endl;
 
-    if(rank == 0) {
-        MPI_Type_free(&blocktype);
-        MPI_Type_free(&blocktype2);
-    }
 
-    MPI_Finalize();
- 
-    return 0;
 }

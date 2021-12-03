@@ -1,0 +1,13 @@
+Change all ints to something cheaper for performance reasons.
+You can scatter all first row and first col - probably cheaper than sending one by one.
+
+Free memory after performing communication.
+Maybe we don't need for loop to initialize.
+
+Ask about computation - e.g that only one core should initialize all variables etc.
+Should root processor send all data to itself? will it actually send, how is this organised
+
+2*2 bug kako god okrenes.
+
+Ask about 2*2 bug - call serial version?
+Does processor need to wait for sending request to finish.

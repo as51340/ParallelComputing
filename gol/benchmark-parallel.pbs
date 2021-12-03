@@ -1,0 +1,19 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=36
+#PBS -l walltime=00:20:00
+#PBS -l pmem=5gb
+#PBS -N gol_parallel
+
+# Load intel module
+module load intel
+
+# Compile parallel program
+mpiicpc -o ./gol/gol_parallel ./gol/gol_parallel.cpp
+
+echo "START" >> ./gol/parallel_times.txt
+echo "$1*$2" >> ./gol/parallel_times.txt
+
+for i in `seq 4 20`
+do
+    mpirun -np $i ./gol/./gol_parallel $1 $2 100 1000
+done

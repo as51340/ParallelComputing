@@ -6,7 +6,7 @@
 #include <ctime>
 #include <vector>
 #include "test.h"
-#include <chrono>
+
 
 int ROWS, COLS;
 int BLOCKROWS, BLOCKCOLS;
@@ -17,9 +17,8 @@ int NUMTASKS;
 // Name of the program - all threads will use same program
 std::string programName;
     
-
 int upTag = 0, rightTag = 1, downTag = 2, leftTag = 3; // from sending perspective
-int upLeftTag = 4, upRightTag = 5, downRightTag = 6, downLeftTag = 7; // from sending perspective
+int upLeftTag = 4, upRightTag = 5, downRightTag = 6, downLeftTag = 7;
 
 
 int const globalBufferLength = 50;
@@ -110,10 +109,11 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
     // DIAGONAL COMMUNICATION
     MPI_Request diagReqs[4];
     MPI_Status diagStats[4];
+    // MPI_Request diagReqsRecv[4];
+    // MPI_Status diagStatsRecv[4];
 
-    MPI_Request diagReqsRecv[4];
-    MPI_Status diagStatsRecv[4];
 
+    
     char **comm = new char*[4];
     char diagBuffer[4];
 
@@ -128,62 +128,34 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
     MPI_Isend(&board[BLOCKCOLS*(BLOCKROWS-1)], BLOCKCOLS, MPI_CHAR, dest, downTag, MPI_COMM_WORLD, &reqs[downTag]);  // send down
 
     // SEND LEFT
-    if(firstCol > 0) {
-        dest = rank - 1;
-    } else {
-        dest = rank + NPCOLS - 1;
-    }
+    dest = (rank + NPCOLS - 1) % NPCOLS; // COLUMN DEST UPDATE
     MPI_Isend(&(board[0]), 1, col_type, dest, leftTag, MPI_COMM_WORLD, &reqs[leftTag]); // send left
 
     // SEND RIGHT
-    if(lastCol < COLS - 1) {
-        dest = rank + 1;
-    } else {
-        dest = rank - NPCOLS + 1;
-    }
+    dest = (rank + NPCOLS + 1) % NPCOLS; // COLUMN DEST UPDATE
     MPI_Isend(&(board[BLOCKCOLS-1]), 1, col_type, dest, rightTag, MPI_COMM_WORLD, &reqs[rightTag]); // send right
-    
+
+
     // TRY TO SEND DIAGONALS
     // SEND UPPER LEFT, i - 1, j - 1
-    if(firstCol > 0) {
-        dest = rank - 1;
-    } else {
-        dest = rank + NPCOLS - 1;
-    }
+    dest = (rank + NPCOLS - 1) % NPCOLS; // COLUMN DEST UPDATE
     dest = (NPCOLS * (NPROWS - 1) + dest) % (NPCOLS*NPROWS); // ROW DEST UPDATE
     MPI_Isend(&board[0], 1, MPI_CHAR, dest, upLeftTag, MPI_COMM_WORLD, &diagReqs[upLeftTag]); // SEND UPPER LEFT ELEMENT TO UPPER LEFT PROCESSOR AND SAVE IT AS upLeftTag
-    // std::cout << "Processor: " << rank << " sends to upper left: " << dest << std::endl;
 
     // SEND UPPER RIGHT: i-1, j+1
-    if(lastCol < COLS - 1) {
-        dest = rank + 1;
-    } else {
-        dest = rank - NPCOLS + 1;
-    } // COLUMN DEST UPDATE
+    dest = (rank + NPCOLS + 1) % NPCOLS; // COLUMN DEST UPDATE
     dest = (NPCOLS * (NPROWS - 1) + dest) % (NPCOLS*NPROWS); // ROW DEST UPDATE
     MPI_Isend(&board[BLOCKCOLS-1], 1, MPI_CHAR, dest, upRightTag, MPI_COMM_WORLD, &diagReqs[upRightTag]); // SEND UPPER RIGHT ELEMENT TO UPPER RIGHT PROCESSOR AND SAVE IT AS upRightTag
-    // std::cout << "Processor: " << rank << " sends to upper right: " << dest << std::endl;
 
     // SEND DOWN RIGHT: i+1, j+1
-    if(lastCol < COLS - 1) {
-        dest = rank + 1;
-    } else {
-        dest = rank - NPCOLS + 1;
-    } // COLUMN DEST UPDATE
+    dest = (rank + NPCOLS + 1) % NPCOLS; // COLUMN DEST UPDATE
     dest = (dest + NPCOLS) % (NPCOLS*NPROWS); // ROW DEST UPDATE
     MPI_Isend(&board[BLOCKCOLS*BLOCKROWS-1], 1, MPI_CHAR, dest, downRightTag, MPI_COMM_WORLD, &diagReqs[downRightTag]); // SEND DOWN RIGHT ELEMENT TO DOWN RIGHT PROCESSOR AND SAVE IT AS downRightTag
-    // std::cout << "Processor: " << rank << " sends to down right: " << dest << std::endl;
-
 
     // SEND DOWN LEFT: i+1, j-1
-    if(firstCol > 0) {
-        dest = rank - 1;
-    } else {
-        dest = rank + NPCOLS - 1;
-    }
+    dest = (rank + NPCOLS - 1) % NPCOLS; // COLUMN DEST UPDATE
     dest = (dest + NPCOLS) % (NPCOLS*NPROWS); // ROW DEST UPDATE
     MPI_Isend(&board[(BLOCKROWS-1)*BLOCKCOLS], 1, MPI_CHAR, dest, downLeftTag, MPI_COMM_WORLD, &diagReqs[downLeftTag]); // SEND DOWN LEFT ELEMENT TO DOWN LEFT PROCESSOR AND SAVE IT AS downLeftTag
-    // std::cout << "Processor: " << rank << " sends to down left: " << dest << std::endl;
 
 
     // AFTER THAT SEND REQUESTS FOR RECEIVING
@@ -199,65 +171,39 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
     MPI_Irecv(&comm[downTag][0], BLOCKCOLS, MPI_CHAR, src, upTag, MPI_COMM_WORLD, &recvReqs[downTag]); // receive from down
 
     // SEND RECEIVE FROM LEFT
-    if(firstCol > 0) {
-        src = rank - 1;
-    } else {
-        src = rank + NPCOLS - 1;
-    }
+    src = (rank + NPCOLS - 1) % NPCOLS; // COLUMN DEST UPDATE
     comm[leftTag] = new char[BLOCKROWS];
     MPI_Irecv(&(comm[leftTag][0]), BLOCKROWS, MPI_CHAR, src, rightTag, MPI_COMM_WORLD, &recvReqs[leftTag]);
 
 
     // SEND RECEIVE FROM RIGHT
-    if(lastCol < COLS - 1) {
-        src = rank + 1;
-    } else {
-        src = rank - NPCOLS + 1;
-    }
+    src = (rank + NPCOLS + 1) % NPCOLS; // COLUMN DEST UPDATE
     comm[rightTag] = new char[BLOCKROWS]; 
     MPI_Irecv(&(comm[rightTag][0]), BLOCKROWS, MPI_CHAR, src, leftTag, MPI_COMM_WORLD, &recvReqs[rightTag]);
 
 
-    // COLUMN DEST UPDATE
+    // DIAGONALS RECEIVING
     // RECEIVE FROM UP LEFT
-    if(firstCol > 0) {
-        src = rank - 1;
-    } else {
-        src = rank + NPCOLS - 1;
-    }
+    src = (rank + NPCOLS - 1) % NPCOLS; // COLUMN DEST UPDATE
     src = (NPCOLS * (NPROWS - 1) + src) % (NPCOLS*NPROWS); // ROW DEST UPDATE
     MPI_Irecv(&diagBuffer[0], 1, MPI_CHAR, src, upLeftTag, MPI_COMM_WORLD, &diagReqsRecv[0]);
-    // std::cout << "Processor: " << rank << " receives from upper left: " << src << std::endl;
 
     // RECEIVE FROM UP RIGHT
-    if(lastCol < COLS - 1) {
-        src = rank + 1;
-    } else {
-        src = rank - NPCOLS + 1;
-    } // COLUMN UPDATE
-    src = (src + NPCOLS) % (NPCOLS*NPROWS); // ROW DEST UPDATE
-    MPI_Irecv(&diagBuffer[2], 1, MPI_CHAR, src, downRightTag, MPI_COMM_WORLD, &diagReqsRecv[2]);
-    // std::cout << "Processor: " << rank << " receives from down right: " << src << std::endl;
-
-    // RECEIVE FROM DOWN LEFT     
-    if(firstCol > 0) {
-        src = rank - 1;
-    } else {
-        src = rank + NPCOLS - 1;
-    } // COLUMN UPDATE
-    src = (src + NPCOLS) % (NPCOLS*NPROWS); // ROW DEST UPDATE
-    MPI_Irecv(&diagBuffer[3], 1, MPI_CHAR, src, downLeftTag, MPI_COMM_WORLD, &diagReqsRecv[3]);
-    // std::cout << "Processor: " << rank << " receives from down left: " << src << std::endl;
-
-    // RECEIVE FROM DOWN RIGHT
-    if(lastCol < COLS - 1) {
-        src = rank + 1;
-    } else {
-        src = rank - NPCOLS + 1;
-    } // COLUMN UPDATE
+    src = (rank + NPCOLS + 1) % NPCOLS; // COLUMN DEST UPDATE
     src = (NPCOLS * (NPROWS - 1) + src) % (NPCOLS*NPROWS); // ROW DEST UPDATE
     MPI_Irecv(&diagBuffer[1], 1, MPI_CHAR, src, upRightTag, MPI_COMM_WORLD, &diagReqsRecv[1]);
-    // std::cout << "Processor: " << rank << " receives from upper right: " << src << std::endl;
+
+
+    // RECEIVE FROM DOWN RIGHT
+    src = (rank + NPCOLS + 1) % NPCOLS; // COLUMN DEST UPDATE
+    src = (src + NPCOLS) % (NPCOLS*NPROWS); // ROW DEST UPDATE
+    MPI_Irecv(&diagBuffer[2], 1, MPI_CHAR, src, downRightTag, MPI_COMM_WORLD, &diagReqsRecv[2]);
+
+    // RECEIVE FROM DOWN LEFT
+    src = (rank + NPCOLS -1) % NPCOLS; // COLUMN DEST UPDATE
+    src = (src + NPCOLS) % (NPCOLS*NPROWS); // ROW DEST UPDATE
+    MPI_Irecv(&diagBuffer[3], 1, MPI_CHAR, src, downLeftTag, MPI_COMM_WORLD, &diagReqsRecv[3]);
+
 
     // NOW PERFORM LIVE NEIGHBOURS UPDATE FROM VALUES YOU KNOW
     std::vector<std::vector<int>> liveNeighbors(BLOCKROWS, std::vector<int>(BLOCKCOLS, 0));
@@ -312,19 +258,19 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
     MPI_Wait(&recvReqs[downTag], &recvStats[downTag]);
 
     // PRINT WHAT I RECEIVED FROM UP PROCESSOR
-    // std::cout << "Proc: " << rank << " received from up processor, iteration " << iteration << std::endl;
-    // std::cout << "----------" << std::endl;
-    // for(int i = 0; i < BLOCKCOLS; i++) {
-    //     printf("%3d ", (char)comm[upTag][i]);
-    // }
-    // std::cout << std::endl << "----------" << std::endl << std::endl;
-// 
-    // std::cout << "Proc: " << rank << " received from down processor, iteration " << iteration << std::endl;
-    // std::cout << "----------" << std::endl;
-    // for(int i = 0; i < BLOCKCOLS; i++) {
-    //     printf("%3d ", (char)comm[downTag][i]);
-    // }
-    // std::cout << std::endl << "----------" << std::endl << std::endl;
+    std::cout << "Proc: " << rank << " received from up processor, iteration " << iteration << std::endl;
+    std::cout << "----------" << std::endl;
+    for(int i = 0; i < BLOCKCOLS; i++) {
+        printf("%3d ", (char)comm[upTag][i]);
+    }
+    std::cout << std::endl << "----------" << std::endl;
+
+    std::cout << "Proc: " << rank << " received from down processor, iteration " << iteration << std::endl;
+    std::cout << "----------" << std::endl;
+    for(int i = 0; i < BLOCKCOLS; i++) {
+        printf("%3d ", (char)comm[downTag][i]);
+    }
+    std::cout << std::endl << "----------" << std::endl;
 
     // UPDATE FIRST AND LAST ROWS LIVE NEIGHBOURS
     for(int j = 0; j < BLOCKCOLS; j++) {
@@ -344,20 +290,20 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
     MPI_Wait(&recvReqs[rightTag], &recvStats[rightTag]);
     MPI_Wait(&recvReqs[leftTag], &recvStats[leftTag]);
 
-    // std::cout << "Proc: " << rank << " received from left processor, iteration " << iteration << std::endl;
-    // std::cout << "----------" << std::endl;
-    // for(int i = 0; i < BLOCKROWS; i++) {
-    //     printf("%3d ", (char)comm[leftTag][i]);
-    // }
-    // std::cout << std::endl << "----------" << std::endl << std::endl;
-// 
-    // 
-    // std::cout << "Proc: " << rank << " received from right processor, iteration " << iteration << std::endl;
-    // std::cout << "----------" << std::endl;
-    // for(int i = 0; i < BLOCKROWS; i++) {
-    //     printf("%3d ", (char)comm[rightTag][i]);
-    // }
-    // std::cout << std::endl << "----------" << std::endl << std::endl;
+    std::cout << "Proc: " << rank << " received from left processor, iteration " << iteration << std::endl;
+    std::cout << "----------" << std::endl;
+    for(int i = 0; i < BLOCKROWS; i++) {
+        printf("%3d ", (char)comm[leftTag][i]);
+    }
+    std::cout << std::endl << "----------" << std::endl;
+
+    
+    std::cout << "Proc: " << rank << " received from right processor, iteration " << iteration << std::endl;
+    std::cout << "----------" << std::endl;
+    for(int i = 0; i < BLOCKROWS; i++) {
+        printf("%3d ", (char)comm[rightTag][i]);
+    }
+    std::cout << std::endl << "----------" << std::endl;
 
     // UPDATE FIRST AND LAST COLUMN OF LIVE NEIGHBOURS
     for(int i = 0; i < BLOCKROWS; i++) {
@@ -372,22 +318,6 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
             liveNeighbors[i+1][BLOCKCOLS-1] += (int)comm[rightTag][i];
         }
     }
-    // WAIT FOR DIAGONAL ELEMENTS
-    for(int i = 0; i < 4; i++) MPI_Wait(&diagReqsRecv[i], &diagStatsRecv[i]);
-
-    // for(int i = 0; i < 4; i++) {
-    //     std::cout << "Processor: " << rank << " received from diagonal tag " << i+4 << " element " << std::endl;
-    //     std::cout << "----------" << std::endl;
-    //     printf("%3d\n", (char)diagBuffer[i]);
-    //     std::cout << "---------" << std::endl;
-    // }
-
-    // PERFORM UPDATE OF DIAGONAL ELEMENTS
-    liveNeighbors[BLOCKROWS-1][BLOCKCOLS-1] += (int)diagBuffer[0];
-    liveNeighbors[0][0] += (int)diagBuffer[2];
-    liveNeighbors[0][BLOCKCOLS-1] += (int)diagBuffer[3];
-    liveNeighbors[BLOCKROWS-1][0] += (int)diagBuffer[1];
-
 
     // UPDATE REMAINING PART OF BOARD
     // UPDATE FIRST AND LAST ROW OF BOARD
@@ -416,20 +346,8 @@ void updateBoard(char *board, int rank, int firstRow, int lastRow, int firstCol,
     delete comm;
 }
 
-
-int factorize_processors(int processors) {
-    // RETURNS FIRST NUMBER WHICH DIVIDES PROCESSORS = NPROWS
-    int p_sqrt = ceil(sqrt(processors));
-    for(int i = 2; i <= p_sqrt; i++) {
-        if(processors % i == 0) return i;
-    }
-    return -1;
-}
-
-
 int main(int argc, char *argv[]) {
 
-    std::chrono::steady_clock::time_point begin;
     if (argc != 5)
     {
         std::cout << "This program should be called with four arguments! \nThese should be, the total number of rows; the total number of columns; the gap between saved iterations and the total number of iterations, in that order." << std::endl;
@@ -450,31 +368,20 @@ int main(int argc, char *argv[]) {
         std::cout << "One or more program arguments are invalid!" << std::endl;
         return 1;
     }
-    // get partition values
-
-
+    
     // INIT MPI
     int rank;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &NUMTASKS);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    // get partition values
     
-    NPROWS = factorize_processors(NUMTASKS);
-    NPCOLS = NUMTASKS / NPROWS;
-    if(NPROWS == -1) {
-        std::cout << "Could not factorize numTasks, ending program...\n";
-        MPI_Finalize();
-        return 1;
-    } else {
-        std::cout << "Processors grid organized into " << NPROWS << "*" << NPCOLS << " grid\n";
-    }
-    if(ROWS % NPROWS != 0 || COLS % NPCOLS != 0) {
-        std::cout << "Cannot optimally scatter matrix to the processors, ending program... \n";
-        MPI_Finalize();
-        return 1;
-    }
-    BLOCKROWS = ROWS / NPROWS; 
+
+    NPROWS = sqrt(NUMTASKS);  // number of processors is squared number
+    NPCOLS = sqrt(NUMTASKS);
+    BLOCKROWS = ROWS / NPROWS;  // 
     BLOCKCOLS = COLS / NPCOLS;
+
 
     // Board and local board
     char board[ROWS][COLS];
@@ -494,8 +401,8 @@ int main(int argc, char *argv[]) {
         std::cout << "BLOCKCOLS: " << BLOCKCOLS << std::endl;
 
         // init_board(&board[0][0], ROWS, COLS);
-        initializeBoard(&board[0][0], ROWS, COLS);
-        // test5_init_board(&board[0][0]);
+        // initializeBoard(&board[0][0], ROWS, COLS);
+        test2_init_board(&board[0][0]);
     
         std::cout << "Global matrix" << std::endl;
         print_board(&board[0][0], ROWS, COLS);
@@ -503,42 +410,39 @@ int main(int argc, char *argv[]) {
 
         // Only one program name
         programName = setUpProgram(ROWS, COLS, iteration_gap, iterations, NUMTASKS);
-        begin = std::chrono::steady_clock::now();
 
         // Send offsets from processor 0 to all other processors
         for(size_t i = 0; i < NPROWS; i++) {
             for(size_t j = 0; j < NPCOLS; j++) {
-                if(i == 0 && j == 0) {  // DON'T SEND TO YOURSELF
-                    firstRow = 0;
-                    firstCol = 0;
-                } else {
-                    int locFirstRow = BLOCKROWS * i;
-                    int locFirstCol = BLOCKCOLS * j;
-                    int procNum = i*NPCOLS + j;
-                    // SEND DATA ABOUT ROW AND COL
-                    MPI_Send(&locFirstRow, 1, MPI_INT, procNum, rowTag, MPI_COMM_WORLD);
-                    MPI_Send(&locFirstCol, 1, MPI_INT, procNum, colTag, MPI_COMM_WORLD);
-                    // SEND PROGRAM NAME TO ALL OTHER PROCESSORS
-                    MPI_Send(programName.c_str(), programName.size(), MPI_CHAR, procNum, programNameTag, MPI_COMM_WORLD);
-                }
+                int locFirstRow = BLOCKROWS * i;
+                int locFirstCol = BLOCKCOLS * j;
+                int procNum = i*NPCOLS + j;
+                // SEND DATA ABOUT ROW AND COL
+                MPI_Send(&locFirstRow, 1, MPI_INT, procNum, rowTag, MPI_COMM_WORLD);
+                MPI_Send(&locFirstCol, 1, MPI_INT, procNum, colTag, MPI_COMM_WORLD);
+                // SEND PROGRAM NAME TO ALL OTHER PROCESSORS
+                MPI_Send(programName.c_str(), programName.size(), MPI_CHAR, procNum, programNameTag, MPI_COMM_WORLD);
             }
         }
     }
-    if(rank != 0) {  // RECEIVE EVERYONE EXCEPT 0TH PROCESSOR
-        // Receive first row variable and first col variable
-        MPI_Recv(&firstRow, 1, MPI_INT, 0, rowTag, MPI_COMM_WORLD, &Stat);
-        MPI_Recv(&firstCol, 1, MPI_INT, 0, colTag, MPI_COMM_WORLD, &Stat);
-        // RECEIVE PROGRAM NAME FROM ROOT PROCESSOR 
-        MPI_Status programNameStatus;
-        MPI_Probe(0, programNameTag, MPI_COMM_WORLD, &programNameStatus);
-        int programNameLen;
-        MPI_Get_count(&programNameStatus, MPI_CHAR, &programNameLen);
-        char programNameBuffer[programNameLen];
-        MPI_Recv(&programNameBuffer[0], programNameLen, MPI_CHAR, 0, programNameTag, MPI_COMM_WORLD, &Stat);
-        programName = std::string(programNameBuffer, programNameLen);
-    }
 
-    // std::cout << "Rank: " << rank << " Program name: " << programName << std::endl;
+    // Receive first row variable and first col variable
+    MPI_Recv(&firstRow, 1, MPI_INT, 0, rowTag, MPI_COMM_WORLD, &Stat);
+    MPI_Recv(&firstCol, 1, MPI_INT, 0, colTag, MPI_COMM_WORLD, &Stat);
+    // RECEIVE PROGRAM NAME FROM ROOT PROCESSOR 
+    MPI_Status programNameStatus;
+    MPI_Probe(0, programNameTag, MPI_COMM_WORLD, &programNameStatus);
+    int programNameLen;
+    MPI_Get_count(&programNameStatus, MPI_CHAR, &programNameLen);
+
+    char programNameBuffer[programNameLen];
+    MPI_Recv(&programNameBuffer[0], programNameLen, MPI_CHAR, 0, programNameTag, MPI_COMM_WORLD, &Stat);
+
+    programName = std::string(programNameBuffer, programNameLen);
+
+    std::cout << "Rank: " << rank << " Program name: " << programName << std::endl;
+
+
 
     lastRow = firstRow + BLOCKROWS - 1;
     lastCol = firstCol + BLOCKCOLS - 1;
@@ -569,9 +473,7 @@ int main(int argc, char *argv[]) {
 
     // SYNCHRONIZE ALL CORES IN THIS MOMENT
     MPI_Barrier(MPI_COMM_WORLD);
-    
 
-    
     // //Do iteration
     writeBoardToFile(&locBoard[0][0], firstRow, lastRow, firstCol, lastCol, programName, 0, rank, BLOCKROWS, BLOCKCOLS);
     for (int i = 1; i <= iterations; ++i)
@@ -586,17 +488,9 @@ int main(int argc, char *argv[]) {
     if(rank == 0) {
         MPI_Type_free(&blocktype);
         MPI_Type_free(&blocktype2);
-
-        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-
-        double time_elapsed = std::chrono::duration<double>(end - begin).count();
-
-        std::ofstream outfile;
-        outfile.open("./gol/parallel_times.txt", std::ios_base::app); // append instead of overwrite
-        outfile << NUMTASKS << " " << time_elapsed << std::endl;
     }
 
     MPI_Finalize();
-
+ 
     return 0;
 }
