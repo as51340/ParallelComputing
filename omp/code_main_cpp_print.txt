@@ -578,7 +578,7 @@ int main(int argc, char *argv[]) {
 
     MPI_Scatterv(board, counts, disps, blocktype, locBoard, BLOCKROWS*BLOCKCOLS, MPI_CHAR, 0, MPI_COMM_WORLD);  
 
-    // SYNCHRONIZE ALL PROCESSORS NOT CORES IN THIS MOMENT
+    // SYNCHRONIZE ALL CORES IN THIS MOMENT
     MPI_Barrier(MPI_COMM_WORLD);
     
 

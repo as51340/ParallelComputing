@@ -21,10 +21,18 @@ void reference(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas:
 {
     result = ublas::prod(left, right);
 }
+// SERIAL FUNCTIONS
 void fullTimesDiagonal(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
 void fullTimesFull(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
 void fullTimesFullBlocked(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
 void triangularTimesFull(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
+
+// PARALLEL FUNCTIONS
+void fullTimesDiagonalParallel(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
+void fullTimesFullParallel(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
+void fullTimesFullBlockedParallel(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
+void triangularTimesFullParallel(ublas::matrix<double> &left, ublas::matrix<double> &right, ublas::matrix<double> &result);
+
 
 void testMatrixMethod(ublas::matrix<double> left, ublas::matrix<double> right, void (*userProduct)(ublas::matrix<double> &, ublas::matrix<double> &, ublas::matrix<double> &), std::string functionName)
 {
@@ -44,8 +52,10 @@ void testMatrixMethod(ublas::matrix<double> left, ublas::matrix<double> right, v
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
 
-    std::cout << "Ran test for " << functionName << ", time taken (ms): " << elapsed_seconds.count() * 1000 / iters << ", error: " << ublas::norm_frobenius(matrixProductBlas - matrixProductUser) / ublas::norm_frobenius(matrixProductBlas) << std::endl;
+    std::cout << "Ran test for " << functionName << ", time taken (ms): " << elapsed_seconds.count() * 1000 / iters << ", error: " 
+        << ublas::norm_frobenius(matrixProductBlas - matrixProductUser) / ublas::norm_frobenius(matrixProductBlas) << std::endl;
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -54,7 +64,7 @@ int main(int argc, char *argv[])
         std::cout << "Expected precisely one command line argument, the matrix dimension!" << std::endl;
         return EXIT_FAILURE;
     }
-
+    
     size_t N = strtoul(argv[1], NULL, 0);
     std::random_device device;
     std::mt19937 generator(device());
@@ -68,14 +78,17 @@ int main(int argc, char *argv[])
             left(i, j) = distribution(generator);
         }
     }
-    testMatrixMethod(left, left, reference, "reference");
+    // testMatrixMethod(left, left, reference, "reference");
 
     ublas::diagonal_matrix<double> rightDiagonal(N);
     for (size_t i = 0; i < N; ++i)
     {
         rightDiagonal(i, i) = distribution(generator);
     }
-    testMatrixMethod(left, rightDiagonal, fullTimesDiagonal, "fullTimesDiagonal");
+    // SERIAL
+    // testMatrixMethod(left, rightDiagonal, fullTimesDiagonal, "fullTimesDiagonal");
+    // PARALLEL
+    // testMatrixMethod(left, rightDiagonal, fullTimesDiagonalParallel, "fullTimesDiagonalParallel");
 
     ublas::matrix<double> rightFull(N, N);
     for (size_t i = 0; i < N; ++i)
@@ -85,19 +98,25 @@ int main(int argc, char *argv[])
             rightFull(i, j) = distribution(generator);
         }
     }
+    // SERIAL
     testMatrixMethod(left, rightFull, fullTimesFull, "fullTimesFull");
-    testMatrixMethod(left, rightFull, fullTimesFullBlocked, "fullTimesFullBlocked");
+    // PARALLEL
+    testMatrixMethod(left, rightFull, fullTimesFullParallel, "fullTimesFullParallel");
 
-    ublas::triangular_matrix<double, ublas::upper> leftTriangular(N, N);
-    for (size_t i = 0; i < N; ++i)
-    {
-        for (size_t j = 0; j < N; ++j)
-        {
-            if (i <= j)
-            {
-                leftTriangular(i, j) = distribution(generator);
-            }
-        }
-    }
-    testMatrixMethod(leftTriangular, rightFull, triangularTimesFull, "triangularTimesFull");
+    // BLOCKED IMPLEMENTATION
+    // testMatrixMethod(left, rightFull, fullTimesFullBlocked, "fullTimesFullBlocked");
+    // testMatrixMethod(left, rightFull, fullTimesFullBlockedParallel, "fullTimesFullBlockedParallel");
+ 
+    // ublas::triangular_matrix<double, ublas::upper> leftTriangular(N, N);
+    // for (size_t i = 0; i < N; ++i)
+    // {
+    //     for (size_t j = 0; j < N; ++j)
+    //     {
+    //         if (i <= j)
+    //         {
+    //             leftTriangular(i, j) = distribution(generator);
+    //         }
+    //     }
+    // }
+    // testMatrixMethod(leftTriangular, rightFull, triangularTimesFull, "triangularTimesFull");
 }

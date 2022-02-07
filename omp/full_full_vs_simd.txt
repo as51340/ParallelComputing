@@ -1,0 +1,17 @@
+Influence of using simd reduction on 500*500 full matrix product
+START
+SIMD
+1 7357.81
+2 2555.57
+4 1311.27
+8 673.454
+16 344.223
+32 192.834
+START
+NORMAL
+1 7357.81
+2 3769.04
+4 1905.64
+8 987.243
+16 503.026
+32 289.699

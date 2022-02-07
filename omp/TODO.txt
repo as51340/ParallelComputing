@@ -1,0 +1,12 @@
+Full times full: with and without simd reduction
+Blocked: normal compare with full
+Triagonal different schedulings
+Maybe comparison between different matrix products complexities.
+Color plots Python...
+Write that this were all average results obtained.
+Collapse vs collapse plots.
+Mention that for smaller matrix sizes there was a lot of overhead.
+Search about some possible research papers you want to read.
+Try to set block size to size/num_threads
+std::flush
+Try rule of thumb at the end.

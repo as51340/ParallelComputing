@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 def efficiency_speedup_line_curve(serial_values, parallel_values, board_sizes, nr_processors):
     """
     Serial values is list of times for several board_sizes.
@@ -11,7 +10,9 @@ def efficiency_speedup_line_curve(serial_values, parallel_values, board_sizes, n
     Goal is to produce one figure for speedups and for efficiencies on same two figures.
     """
     # Take only values for first board
+
     fig, (ax1, ax2) = plt.subplots(2, 1)
+
     fig.suptitle('Game of life, speedup and efficiency, 1000 iterations')
     for i in range(parallel_values.shape[0]):
         speedups = np.zeros(parallel_values.shape[1])
@@ -42,29 +43,34 @@ def efficiency_speedup_line_curve(serial_values, parallel_values, board_sizes, n
     fig.savefig("gol_speed_eff_small" + ".png")
 
 
-def read_serial_times(filename):
+def plt_normal(parallel_values, nr_cores, board_sizes, plt_title, filename):
     """
-    All data tested needs to be tested on the same number of processors-
-    :param filename:
-    :return:
+    Plots speedup curve from given values
+    :param parallel_values: 
+    :param n_cores: 
+    :param board_sizes: 
+    :param plt_title: 
+    :param filename: 
+    :return: 
     """
-    values = []
-    board_sizes = []
-    with open(filename, "r") as f:
-        while True:
-            line = f.readline()
+    fig, ax1 = plt.subplots(1, 1)
 
-            if not line:
-                break
+    fig.suptitle(plt_title)
+    for i in range(parallel_values.shape[0]):
+        seq = parallel_values[i, 0]
+        speedups = np.zeros(parallel_values.shape[1])
+        for j in range(parallel_values.shape[1]):
+            speedups[j] = seq / parallel_values[i, j]
+        ax1.plot(nr_cores[i, :], speedups, label=board_sizes[i])
+        ax1.scatter(nr_cores[i, :], speedups)
 
-            line = line.rstrip()
+    ax1.set_xlabel("Cores")
+    ax1.set_ylabel("Speedup")
+    ax1.legend()
+    fig.set_size_inches(8.5, 4.5, forward=True)
+    fig.savefig(filename)
 
-            if line == "START":
-                board = f.readline().rstrip()
-                board_sizes.append(board)
-            else:
-                values.append(float(line))
-    return np.array(values), board_sizes
+
 
 
 def read_parallel_times(filename):
@@ -72,7 +78,9 @@ def read_parallel_times(filename):
     board_size = []
     n_processors = []
     i = -1
+    plt_title = None
     with open(filename, "r") as f:
+        plt_title = f.readline().rstrip()
         while True:
             line = f.readline()
 
@@ -92,22 +100,30 @@ def read_parallel_times(filename):
                 n_processors[i].append(int(splitted_values[0]))  # n processors
                 values[i].append(float(splitted_values[1]))  # times
 
-    return np.array(values), board_size, np.array(n_processors)
-
+    return np.array(values), board_size, np.ar3
 
 if __name__ == "__main__":
-    serial_values, board_sizes_serial = read_serial_times("./serial_times.txt")
-    for i in range(serial_values.shape[0]):
-        print("Board size: ", board_sizes_serial[i])
-        print("Serial time: ", serial_values[i])
-    print()
-
-    parallel_values, board_sizes_parallel, n_processors = read_parallel_times("parallel_times.txt")
+    parallel_values, board_sizes_parallel, nr_cores, plt_title = read_parallel_times("diagonal_results.txt")
+    print(f"Plt title: {plt_title}")
     for i in range(parallel_values.shape[0]):
         print("Board size: ", board_sizes_parallel[i])
         for j in range(parallel_values.shape[1]):
-            print(n_processors[i, j], parallel_values[i, j])
+            print(nr_cores[i, j], parallel_values[i, j])
         print()
     print()
 
-    efficiency_speedup_line_curve(serial_values, parallel_values, board_sizes_parallel, n_processors)
+    # Plot diagonal
+    plt_normal(parallel_values, nr_cores, board_sizes_parallel, plt_title, "diagonal.png")
+
+    # Tridiagonal setup
+    parallel_values_tri, schedulings, nr_cores, plt_title = read_parallel_times("triagonal_schedulings_result.txt")
+    plt_normal(parallel_values_tri, nr_cores, schedulings, plt_title, "tridiagonal_schedulings.png")
+
+    # SIMD INFLUECNE FULL_FULL
+    parallel_values_full, simd_no_simd, nr_cores, plt_title = read_parallel_times("full_full_vs_simd.txt")
+    plt_normal(parallel_values_full, nr_cores, simd_no_simd, plt_title, "full_full_vs_simd.png")
+
+    # Different block sizes used
+    parallel_values_blocks, blocks, nr_cores, plt_title = read_parallel_times("full_vs_blocked.txt")
+    plt_normal(parallel_values_blocks, nr_cores, blocks, plt_title, "full_vs_blocked.png")
+
